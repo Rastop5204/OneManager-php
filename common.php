@@ -59,6 +59,8 @@ $EnvConfigs = [
     'guestup_path'      => 0b111,
     'domainforproxy'    => 0b111,
     'public_path'       => 0b111,
+    'fileConduitSize'   => 0b110,
+    'fileConduitCacheTime'   => 0b110,
 ];
 
 $timezones = array( 
@@ -392,6 +394,20 @@ function main($path)
             $url = $files['url'];
             if ( strtolower(splitlast($files['name'], '.')[1])=='html' ) return output($files['content']['body'], $files['content']['stat']);
             else {
+                $fileConduitSize = getConfig('fileConduitSize', $_SERVER['disktag']);
+                $fileConduitCacheTime = getConfig('fileConduitCacheTime', $_SERVER['disktag']);
+                if (!!$fileConduitSize || !!$fileConduitCacheTime) {
+                    if ($fileConduitSize>1) $fileConduitSize *= 1024*1024;
+                    else $fileConduitSize = 1024*1024;
+                    if ($fileConduitCacheTime>1) $fileConduitCacheTime *= 3600;
+                    else $fileConduitCacheTime = 3600;
+                    if ($files['size']<$fileConduitSize) return output(
+                        base64_encode(file_get_contents($files['url'])),
+                        200,
+                        ['Content-Type' => $files['mime'], 'Cache-Control' => 'max-age=' . $fileConduitCacheTime],
+                        true
+                    );
+                }
                 if ($_SERVER['HTTP_RANGE']!='') $header['Range'] = $_SERVER['HTTP_RANGE'];
                 $header['Location'] = $url;
                 $domainforproxy = '';
@@ -819,9 +835,7 @@ function message($message, $title = 'Message', $statusCode = 200, $wainstat = 0)
         <a href="' . $_SERVER['base_path'] . '">' . getconstStr('Back') . getconstStr('Home') . '</a>
         <h1>' . $title . '</h1>
         <div id="dis" style="display: none;">
-
 ' . $message . '
-
         </div>';
     if ($wainstat) {
         $html .= '
@@ -968,20 +982,20 @@ function adminform($name = '', $pass = '', $path = '')
     }
     $statusCode = 401;
     $html .= '
-    <style>body{background-image:linear-gradient(60deg,#000000 0%,#000000 100%);background-attachment:fixed;color:#000000}body>div{position:absolute;text-align:center;background-color:rgba(20,33,61,.5);border-radius:20px;width:75vw;max-width:500px;height:350px;margin:auto;top:25%;bottom:50%;left:0;right:0}body>div:hover{box-shadow:3px 3px 6px 3px rgba(252,162,17,.3)}h4{font-size:40px}input{font-size:20px;margin:2%auto;border:#fca211 2px solid;border-radius:10px;padding:10px;height:50px;text-align:center}input:last-of-type{color:#000000;height:50px;width:80px;font-weight:800}input:hover:last-of-type{cursor:pointer;color:#FFFFFF;background-color:#E5E5E5}</style>
-    <body>
+<body>
     <div>
-      <center><h4>'.getconstStr('InputPassword').'</h4>
-      <form action="" method="post">
-          <div>
-            <input name="password1" type="password"/>
-            </br>
-            <input type="submit" value="'.getconstStr('Login').'">
-          </div>
-      </form>
-      </center>
+    <center><h4>' . getconstStr('InputPassword') . '</h4>
+    ' . $name . '
+    <form action="" method="post" onsubmit="return sha1loginpass(this);">
+        <div>
+            <input id="password1" name="password1" type="password"/>
+            <input name="timestamp" type="hidden"/>
+            <input type="submit" value="' . getconstStr('Login') . '">
+        </div>
+    </form>
+    </center>
     </div>
-';
+</body>';
     $html .= '
 <script>
     document.getElementById("password1").focus();
@@ -1307,6 +1321,39 @@ function EnvOpt($needUpdate = 0)
     $html .= '
 <a href="' . $preurl . '">' . getconstStr('Back') . '</a><br>
 ';
+    if ($_GET['setup']==='cmd') {
+        $statusCode = 200;
+        $html .= '
+<form name="form1" method="POST" action="">
+    <input id="inputarea" name="cmd" style="width:100%" value="' . $_POST['cmd'] . '"><br>
+    <input type="submit" value="post">
+</form>';
+        if ($_POST['cmd']!='') {
+            $html .= '
+<pre>';
+            @ob_start();
+            passthru($_POST['cmd'], $cmdstat);
+            $html .= '
+stat: ' . $cmdstat . '
+output:
+';
+            if ($cmdstat>0) $statusCode = 400;
+            if ($cmdstat===1) $statusCode = 403;
+            if ($cmdstat===127) $statusCode = 404;
+            $html .= htmlspecialchars(ob_get_clean());
+            $html .= '</pre>';
+        }
+        $html .= '
+<script>
+    setTimeout(function () {
+        let inputarea = document.getElementById(\'inputarea\');
+        //console.log(a + ", " + inputarea.value);
+        inputarea.focus();
+        inputarea.setSelectionRange(0, inputarea.value.length);
+    }, 500);
+</script>';
+        return message($html, 'Run cmd', $statusCode);
+    }
     if ($_GET['setup']==='platform') {
         $frame .= '
 <table border=1 width=100%>
@@ -1433,7 +1480,6 @@ function EnvOpt($needUpdate = 0)
         }
         $frame .= '
 </table>
-
 <script>
     function deldiskconfirm(t) {
         var msg="' . getconstStr('Delete') . ' ??";
@@ -1478,7 +1524,6 @@ function EnvOpt($needUpdate = 0)
         opacity: 0.4;
         background-color: #1748ce;
     }
-
     #sortdisks td {
         cursor: move;
     }
