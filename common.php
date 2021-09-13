@@ -59,8 +59,6 @@ $EnvConfigs = [
     'guestup_path'      => 0b111,
     'domainforproxy'    => 0b111,
     'public_path'       => 0b111,
-    'fileConduitSize'   => 0b110,
-    'fileConduitCacheTime'   => 0b110,
 ];
 
 $timezones = array( 
@@ -394,20 +392,6 @@ function main($path)
             $url = $files['url'];
             if ( strtolower(splitlast($files['name'], '.')[1])=='html' ) return output($files['content']['body'], $files['content']['stat']);
             else {
-                $fileConduitSize = getConfig('fileConduitSize', $_SERVER['disktag']);
-                $fileConduitCacheTime = getConfig('fileConduitCacheTime', $_SERVER['disktag']);
-                if (!!$fileConduitSize || !!$fileConduitCacheTime) {
-                    if ($fileConduitSize>1) $fileConduitSize *= 1024*1024;
-                    else $fileConduitSize = 1024*1024;
-                    if ($fileConduitCacheTime>1) $fileConduitCacheTime *= 3600;
-                    else $fileConduitCacheTime = 3600;
-                    if ($files['size']<$fileConduitSize) return output(
-                        base64_encode(file_get_contents($files['url'])),
-                        200,
-                        ['Content-Type' => $files['mime'], 'Cache-Control' => 'max-age=' . $fileConduitCacheTime],
-                        true
-                    );
-                }
                 if ($_SERVER['HTTP_RANGE']!='') $header['Range'] = $_SERVER['HTTP_RANGE'];
                 $header['Location'] = $url;
                 $domainforproxy = '';
@@ -835,7 +819,9 @@ function message($message, $title = 'Message', $statusCode = 200, $wainstat = 0)
         <a href="' . $_SERVER['base_path'] . '">' . getconstStr('Back') . getconstStr('Home') . '</a>
         <h1>' . $title . '</h1>
         <div id="dis" style="display: none;">
+
 ' . $message . '
+
         </div>';
     if ($wainstat) {
         $html .= '
@@ -1321,39 +1307,6 @@ function EnvOpt($needUpdate = 0)
     $html .= '
 <a href="' . $preurl . '">' . getconstStr('Back') . '</a><br>
 ';
-    if ($_GET['setup']==='cmd') {
-        $statusCode = 200;
-        $html .= '
-<form name="form1" method="POST" action="">
-    <input id="inputarea" name="cmd" style="width:100%" value="' . $_POST['cmd'] . '"><br>
-    <input type="submit" value="post">
-</form>';
-        if ($_POST['cmd']!='') {
-            $html .= '
-<pre>';
-            @ob_start();
-            passthru($_POST['cmd'], $cmdstat);
-            $html .= '
-stat: ' . $cmdstat . '
-output:
-';
-            if ($cmdstat>0) $statusCode = 400;
-            if ($cmdstat===1) $statusCode = 403;
-            if ($cmdstat===127) $statusCode = 404;
-            $html .= htmlspecialchars(ob_get_clean());
-            $html .= '</pre>';
-        }
-        $html .= '
-<script>
-    setTimeout(function () {
-        let inputarea = document.getElementById(\'inputarea\');
-        //console.log(a + ", " + inputarea.value);
-        inputarea.focus();
-        inputarea.setSelectionRange(0, inputarea.value.length);
-    }, 500);
-</script>';
-        return message($html, 'Run cmd', $statusCode);
-    }
     if ($_GET['setup']==='platform') {
         $frame .= '
 <table border=1 width=100%>
@@ -1480,6 +1433,7 @@ output:
         }
         $frame .= '
 </table>
+
 <script>
     function deldiskconfirm(t) {
         var msg="' . getconstStr('Delete') . ' ??";
@@ -1524,6 +1478,7 @@ output:
         opacity: 0.4;
         background-color: #1748ce;
     }
+
     #sortdisks td {
         cursor: move;
     }
